@@ -3,6 +3,9 @@ import os
 import pandas
 import requests
 
+# TODO: figure out how to check if the cached version is up to date
+# Maybe by checking if the cached file covers the entirety of the expected time range?
+
 base_url = "https://dd.weather.gc.ca"
 cache_path = "./cache"
 
@@ -49,15 +52,17 @@ def station_list():
     return file(rel_path_station_list)
 
 
-def all_daily_for(climate_id):
+def all_daily_for(climate_id, first_year=None, last_year=None):
     stations = file(rel_path_station_list)
     this_station_mask = stations.loc[:, "Climate ID"] == climate_id
     if this_station_mask.sum() != 1:
         raise ValueError(f"Expected 1 station for given ID, found {this_station_mask.sum()}")
     province_name = stations.loc[this_station_mask, "Province"].values[0]
     province = provincial_code_lookup[province_name]
-    first_year = int(stations.loc[this_station_mask, "DLY First Year"].values[0])
-    last_year = int(stations.loc[this_station_mask, "DLY Last Year"].values[0])
+    if first_year is None:
+        first_year = int(stations.loc[this_station_mask, "DLY First Year"].values[0])
+    if last_year is None:
+        last_year = int(stations.loc[this_station_mask, "DLY Last Year"].values[0])
     df = pandas.DataFrame()
     for year in range(first_year, last_year + 1):
         for month in range(1, 13):
@@ -67,7 +72,7 @@ def all_daily_for(climate_id):
             try:
                 new_df = file(path)
                 if not new_df.empty:
-                    df = pandas.concat([df, new_df])
+                    df = pandas.concat([df, new_df], ignore_index=True)
             except FileNotFoundError:
                 # Even though we know which years should exist on the server, we don't know that
                 # all months of each year have data.
@@ -75,22 +80,24 @@ def all_daily_for(climate_id):
     return df
 
 
-def all_hourly_for(climate_id):
+def all_hourly_for(climate_id, first_year=None, last_year=None):
     stations = station_list()
     this_station_mask = stations.loc[:, "Climate ID"] == climate_id
     if this_station_mask.sum() != 1:
         raise ValueError(f"Expected 1 station for given ID, found {this_station_mask.sum()}")
     province_name = stations.loc[this_station_mask, "Province"].values[0]
     province = provincial_code_lookup[province_name]
-    first_year = int(stations.loc[this_station_mask, "HLY First Year"].values[0])
-    last_year = int(stations.loc[this_station_mask, "HLY Last Year"].values[0])
+    if first_year is None:
+        first_year = int(stations.loc[this_station_mask, "HLY First Year"].values[0])
+    if last_year is None:
+        last_year = int(stations.loc[this_station_mask, "HLY Last Year"].values[0])
     df = pandas.DataFrame()
-    for year in range(first_year, last_year):
+    for year in range(first_year, last_year + 1):
         try:
             path = path_for_hourly_data(climate_id=climate_id, year=year, province=province)
             new_df = file(path)
             if not new_df.empty:
-                df = pandas.concat([df, new_df])
+                df = pandas.concat([df, new_df], ignore_index=True)
         except FileNotFoundError:
             print(f"WARNING: no hourly data for station {climate_id} on {year}")
     return df
